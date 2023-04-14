@@ -1,0 +1,5 @@
+starknet-py==0.15.2
+requests==2.28.2
+asyncio==3.4.3
+typing==3.7.4
+dataclasses==0.6
