@@ -95,7 +95,7 @@ async def main():
 
         # Get only options that are past their maturity and with pool position > 0
         options_past_maturity_non_zero_position = [
-            option for option in options_past_maturity # if int(option['option_position'] or '0x0', 16) > 0
+            option for option in options_past_maturity if int(option['option_position'] or '0x0', 16) > 0
         ]
 
         # Create account instance
