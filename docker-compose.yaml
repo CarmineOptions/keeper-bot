@@ -5,4 +5,4 @@ services:
     build: .
     env_file:
       - .env
-    entrypoint: ./bin/set_checkpoints.sh
+    entrypoint: ./bin/expire_options.sh
