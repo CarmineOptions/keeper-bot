@@ -23,23 +23,23 @@ SUPPORTED_NETWORKS = ['testnet', 'mainnet']
 
 @dataclass
 class EnVars:
-    private_key: str
-    public_key: str
+    # private_key: str
+    # public_key: str
     tg_key: str
     tg_chat_id: str
 
 
 def parse_envs() -> EnVars:
-    PRIVATE_KEY = os.getenv('PRIVATE_KEY')
-    PUBLIC_KEY = os.getenv('PUBLIC_KEY')
+    # PRIVATE_KEY = os.getenv('PRIVATE_KEY')
+    # PUBLIC_KEY = os.getenv('PUBLIC_KEY')
     TG_KEY = os.getenv("TG_KEY")
     TG_CHAT_ID = os.getenv("TG_CHAT_ID")
 
-    if PRIVATE_KEY == None:
-        raise ValueError("Missing PRIVATE_KEY ENV")
+    # if PRIVATE_KEY == None:
+    #     raise ValueError("Missing PRIVATE_KEY ENV")
 
-    if PUBLIC_KEY == None:
-        raise ValueError("Missing PUBLIC_KEY ENV")
+    # if PUBLIC_KEY == None:
+    #     raise ValueError("Missing PUBLIC_KEY ENV")
 
     if TG_KEY == None:
         raise ValueError("Missing TG_KEY ENV")
@@ -48,8 +48,8 @@ def parse_envs() -> EnVars:
         raise ValueError("Missing TG_CHAT_ID ENV")
 
     return EnVars(
-        private_key=PRIVATE_KEY,
-        public_key=PUBLIC_KEY,
+        # private_key=PRIVATE_KEY,
+        # public_key=PUBLIC_KEY,
         tg_key=TG_KEY,
         tg_chat_id=TG_CHAT_ID
     )
@@ -64,29 +64,32 @@ def setup_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--net', '-n', type=str
     )
+
     parser.add_argument(
         '--wallet_address', '-wa', type=str
     )
     parser.add_argument(
-        '--contract_address', type=str
+        '--pub_key', type=str
     )
     parser.add_argument(
-        '--abi_path', type=str
+        '--priv_key', type=str
+    )
+    
+    parser.add_argument(
+        '--contract_address','-ca', type=str
     )
     parser.add_argument(
-        '--function_name', '-f', type=str
+        '--function_name', '-fa', type=str
     )
     parser.add_argument(
         '--function_arguments', default=[], type=json.loads
     )
+
+    parser.add_argument(
+        '--proxy', action = 'store_true'
+    )
+
     return parser
-
-
-def get_abi(args: argparse.Namespace) -> List:
-    with open(args.abi_path, 'r') as f:
-        abi = json.load(f)
-
-    return abi
 
 
 def alert(msg: str, chat_id: str, api_key: str):
@@ -124,7 +127,6 @@ async def main():
 
         logging.info(f"Parsed args: {args}")
 
-        abi = get_abi(args)
         chain = get_chain(args)
 
         logging.info(f"Selected chain: {chain}")
@@ -134,16 +136,16 @@ async def main():
             client=client,
             address=args.wallet_address,
             key_pair=KeyPair(
-                private_key=int(enVars.private_key, 16),
-                public_key=int(enVars.public_key, 16)
+                private_key=int(args.priv_key, 16),
+                public_key=int(args.pub_key, 16)
             ),
             chain=chain,
         )
 
-        contract = Contract(
+        contract = await Contract.from_address(
             address=args.contract_address,
-            abi=abi,
             provider=account,
+            proxy_config=args.proxy
         )
 
         # Invoke function
@@ -185,7 +187,7 @@ async def main():
     except Exception as err:
         err_msg = "".join(traceback.format_exception(
             err, value=err, tb=err.__traceback__))
-        logging.error(f"Execution failed: {err}")
+        logging.error(f"Execution failed: {err},\n {err_msg}")
         alert(f"COMPLETE FAIL: {err_msg}", enVars.tg_chat_id, enVars.tg_key)
 
 if __name__ == '__main__':
@@ -200,6 +202,5 @@ if __name__ == '__main__':
 #       --net testnet \
 #       -wa $ACCOUNT_ADDR \
 #       --contract_address $DUMMY_ADDR \
-#       --abi_path ../build/dummy_abi.json \
 #       --function_name write_value \
 #       --function_arguments "[1, 2]"
