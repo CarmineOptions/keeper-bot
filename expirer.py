@@ -21,6 +21,7 @@ AMM_ADDR = 0x076dbabc4293db346b0a56b29b6ea9fe18e93742c73f12348c8747ecfc1050aa  #
 CLIENT = GatewayClient(net="mainnet")
 CHAIN = StarknetChainId.MAINNET
 
+
 @dataclass
 class EnVars:
     private_key: int
@@ -29,10 +30,11 @@ class EnVars:
     tg_key: str
     tg_chat_id: str
 
+
 def parse_envs() -> EnVars:
     PRIVATE_KEY = os.getenv('PRIVATE_KEY')
     PUBLIC_KEY = os.getenv('PUBLIC_KEY')
-    ADDRESS = os.getenv('ADDRESS')
+    ADDRESS = os.getenv('WALLET_ADDRESS')
     TG_KEY = os.getenv("TG_KEY")
     TG_CHAT_ID = os.getenv("TG_CHAT_ID")
 
@@ -52,12 +54,13 @@ def parse_envs() -> EnVars:
         raise ValueError("Missing TG_CHAT_ID ENV")
 
     return EnVars(
-        private_key = int(PRIVATE_KEY, 16),
-        public_key = int(PUBLIC_KEY, 16),
-        address = ADDRESS,
-        tg_key = TG_KEY,
-        tg_chat_id = TG_CHAT_ID
+        private_key=int(PRIVATE_KEY, 16),
+        public_key=int(PUBLIC_KEY, 16),
+        address=ADDRESS,
+        tg_key=TG_KEY,
+        tg_chat_id=TG_CHAT_ID
     )
+
 
 def alert(msg: str, chat_id: str, api_key: str):
     # https://api.telegram.org/bot[BOT_API_KEY]/sendMessage?chat_id=[MY_CHANNEL_NAME]&text=[MY_MESSAGE_TEXT]
@@ -65,8 +68,10 @@ def alert(msg: str, chat_id: str, api_key: str):
         'chat_id': chat_id,
         'text': msg,
     }
-    res = requests.get("https://api.telegram.org/bot" + api_key + "/sendMessage", params=params)
+    res = requests.get("https://api.telegram.org/bot" +
+                       api_key + "/sendMessage", params=params)
     res.raise_for_status()
+
 
 async def main():
 
@@ -75,7 +80,7 @@ async def main():
         enVars = parse_envs()
 
         # Fetch all options from API and create list of them with latest pool position in given option
-        # pool position is stored under key volatilities 
+        # pool position is stored under key volatilities
         options = requests.get(OPTIONS_ENDPOINT)
         options_with_position = []
         for option in options.json()['data']:
@@ -84,13 +89,13 @@ async def main():
                 'maturity': option['maturity'],
                 'strike_price': option['strike_price'],
                 'lp_address': option['lp_address'],
-                **sorted(option['volatilities'], key = lambda x: x['block_number'])[-1]
-        })
+                **sorted(option['volatilities'], key=lambda x: x['block_number'])[-1]
+            })
 
         # Get only options that are past their maturity
         now = int(time.time())
         options_past_maturity = [
-            option for option in options_with_position if option['maturity'] < now 
+            option for option in options_with_position if option['maturity'] < now
         ]
 
         # Get only options that are past their maturity and with pool position > 0
@@ -100,10 +105,11 @@ async def main():
 
         # Create account instance
         account = Account(
-            client = CLIENT,
-            address = enVars.address,
-            key_pair = KeyPair(private_key=enVars.private_key, public_key=enVars.public_key),
-            chain = CHAIN
+            client=CLIENT,
+            address=enVars.address,
+            key_pair=KeyPair(private_key=enVars.private_key,
+                             public_key=enVars.public_key),
+            chain=CHAIN
         )
 
         # Load abi
@@ -112,19 +118,19 @@ async def main():
 
         # Create AMM contract instance
         contract = Contract(
-            address = AMM_ADDR,
-            abi = abi,
-            provider = account,
+            address=AMM_ADDR,
+            abi=abi,
+            provider=account,
         )
 
         # Prepare calls
         calls = [
             contract.functions['expire_option_token_for_pool'].prepare(
-                lptoken_address = int(option['lp_address'], 16),
-                option_side = option['option_side'],
-                strike_price = int(option['strike_price'], 16),
-                maturity = option['maturity']
-            ) 
+                lptoken_address=int(option['lp_address'], 16),
+                option_side=option['option_side'],
+                strike_price=int(option['strike_price'], 16),
+                maturity=option['maturity']
+            )
             for option in options_past_maturity_non_zero_position
         ]
 
@@ -137,7 +143,8 @@ async def main():
                 tx_status = await account.client.get_transaction_receipt(response.transaction_hash)
 
                 if (tx_status.status == TransactionStatus.ACCEPTED_ON_L1) or (tx_status.status == TransactionStatus.ACCEPTED_ON_L2):
-                    alert(f"Expiration successfull: {tx_status}: ".upper(), enVars.tg_chat_id, enVars.tg_key)
+                    alert(f"Expiration successfull: {tx_status}: ".upper(
+                    ), enVars.tg_chat_id, enVars.tg_key)
                     for call in calls:
                         alert(f"{call}", enVars.tg_chat_id, enVars.tg_key)
                     break
@@ -146,17 +153,21 @@ async def main():
                     continue
 
             except Exception as err:
-                tracebacks.append("".join(traceback.format_exception(err, value=err, tb=err.__traceback__)))
+                tracebacks.append("".join(traceback.format_exception(
+                    err, value=err, tb=err.__traceback__)))
                 continue
 
         if tracebacks:
-            alert(f'Expiration received {len(tracebacks)} errors:(('.upper(), enVars.tg_chat_id, enVars.tg_key)
+            alert(f'Expiration received {len(tracebacks)} errors:(('.upper(
+            ), enVars.tg_chat_id, enVars.tg_key)
             for errmsg in tracebacks:
                 alert(errmsg, enVars.tg_chat_id, enVars.tg_key)
 
     except Exception as err:
-        err_msg = "".join(traceback.format_exception(err, value=err, tb=err.__traceback__))
-        alert(f"EXPIRATION COMPLETE FAIL: {err_msg}", enVars.tg_chat_id, enVars.tg_key)
+        err_msg = "".join(traceback.format_exception(
+            err, value=err, tb=err.__traceback__))
+        alert(f"EXPIRATION COMPLETE FAIL: {err_msg}",
+              enVars.tg_chat_id, enVars.tg_key)
 
 if __name__ == '__main__':
     asyncio.run(main())
