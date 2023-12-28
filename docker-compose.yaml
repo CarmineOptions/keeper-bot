@@ -1,8 +1,14 @@
 version: '3.9'
 
 services:
-  keeper:
+  expire:
     build: .
     env_file:
       - .env
     entrypoint: ./bin/expire_options.sh
+
+  # checkpoint:
+  #   build: .
+  #   env_file:
+  #     - .env
+  #   entrypoint: ./bin/set_checkpoints.sh

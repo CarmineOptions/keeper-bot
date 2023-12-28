@@ -12,7 +12,7 @@ import traceback
 from starknet_py.contract import Contract
 from starknet_py.net.signer.stark_curve_signer import KeyPair
 from starknet_py.net.account.account import Account
-from starknet_py.net.gateway_client import GatewayClient
+from starknet_py.net.full_node_client import FullNodeClient
 from starknet_py.net.models.chains import StarknetChainId
 from starknet_py.net.client_models import TransactionStatus
 
@@ -23,23 +23,13 @@ SUPPORTED_NETWORKS = ['testnet', 'mainnet']
 
 @dataclass
 class EnVars:
-    # private_key: str
-    # public_key: str
     tg_key: str
     tg_chat_id: str
 
 
 def parse_envs() -> EnVars:
-    # PRIVATE_KEY = os.getenv('PRIVATE_KEY')
-    # PUBLIC_KEY = os.getenv('PUBLIC_KEY')
     TG_KEY = os.getenv("TG_KEY")
     TG_CHAT_ID = os.getenv("TG_CHAT_ID")
-
-    # if PRIVATE_KEY == None:
-    #     raise ValueError("Missing PRIVATE_KEY ENV")
-
-    # if PUBLIC_KEY == None:
-    #     raise ValueError("Missing PUBLIC_KEY ENV")
 
     if TG_KEY == None:
         raise ValueError("Missing TG_KEY ENV")
@@ -48,8 +38,6 @@ def parse_envs() -> EnVars:
         raise ValueError("Missing TG_CHAT_ID ENV")
 
     return EnVars(
-        # private_key=PRIVATE_KEY,
-        # public_key=PUBLIC_KEY,
         tg_key=TG_KEY,
         tg_chat_id=TG_CHAT_ID
     )
@@ -62,7 +50,10 @@ def setup_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        '--net', '-n', type=str
+        '--net', type=str
+    )
+    parser.add_argument(
+        '--node_url', type=str
     )
 
     parser.add_argument(
@@ -110,7 +101,7 @@ def get_chain(args: argparse.Namespace) -> StarknetChainId:
             f'Unknown network, expected one of {SUPPORTED_NETWORKS}, got: {args.net}'
         )
 
-    return StarknetChainId.TESTNET if args.net == 'testnet' else StarknetChainId.MAINNET
+    return StarknetChainId.MAINNET if 'mainnet' in args.node_url else StarknetChainId.TESTNET
 
 
 async def main():
@@ -125,13 +116,12 @@ async def main():
         parser = setup_parser()
         args = parser.parse_args()
 
-        logging.info(f"Parsed args: {args}")
-
         chain = get_chain(args)
 
+        logging.info(f"Selected network: {args.net}")
         logging.info(f"Selected chain: {chain}")
 
-        client = GatewayClient(net=args.net)
+        client = FullNodeClient(node_url=args.node_url)
         account = Account(
             client=client,
             address=args.wallet_address,

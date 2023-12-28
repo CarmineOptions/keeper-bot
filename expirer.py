@@ -11,15 +11,13 @@ from starknet_py.contract import Contract
 from starknet_py.net.signer.stark_curve_signer import KeyPair
 from starknet_py.net.client_models import TransactionStatus
 from starknet_py.net.account.account import Account
-from starknet_py.net.gateway_client import GatewayClient
+from starknet_py.net.full_node_client import FullNodeClient
 from starknet_py.net.models.chains import StarknetChainId
 
 
 MAX_FEE = int(1e16)
 OPTIONS_ENDPOINT = 'https://api.carmine.finance/api/v1/mainnet/option-volatility'
 AMM_ADDR = 0x076dbabc4293db346b0a56b29b6ea9fe18e93742c73f12348c8747ecfc1050aa  # mainnet
-CLIENT = GatewayClient(net="mainnet")
-CHAIN = StarknetChainId.MAINNET
 
 
 @dataclass
@@ -29,12 +27,14 @@ class EnVars:
     address: str
     tg_key: str
     tg_chat_id: str
+    rpc_url: int
 
 
 def parse_envs() -> EnVars:
-    PRIVATE_KEY = os.getenv('PRIVATE_KEY')
-    PUBLIC_KEY = os.getenv('PUBLIC_KEY')
-    ADDRESS = os.getenv('WALLET_ADDRESS')
+    PRIVATE_KEY = os.getenv('MAINNET_PRIVATE_KEY')
+    PUBLIC_KEY = os.getenv('MAINNET_PUBLIC_KEY')
+    ADDRESS = os.getenv('MAINNET_WALLET_ADDRESS')
+    RPC_URL = os.getenv('MAINNET_RPC')
     TG_KEY = os.getenv("TG_KEY")
     TG_CHAT_ID = os.getenv("TG_CHAT_ID")
 
@@ -53,12 +53,16 @@ def parse_envs() -> EnVars:
     if TG_CHAT_ID == None:
         raise ValueError("Missing TG_CHAT_ID ENV")
 
+    if RPC_URL == None:
+        raise ValueError("Missing RPC_URL ENV")
+
     return EnVars(
         private_key=int(PRIVATE_KEY, 16),
         public_key=int(PUBLIC_KEY, 16),
         address=ADDRESS,
         tg_key=TG_KEY,
-        tg_chat_id=TG_CHAT_ID
+        tg_chat_id=TG_CHAT_ID,
+        rpc_url=RPC_URL
     )
 
 
@@ -78,6 +82,9 @@ async def main():
     try:
 
         enVars = parse_envs()
+
+        CLIENT = FullNodeClient(node_url=enVars.rpc_url)
+        CHAIN = StarknetChainId.MAINNET
 
         # Fetch all options from API and create list of them with latest pool position in given option
         # pool position is stored under key volatilities

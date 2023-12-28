@@ -3,6 +3,7 @@
 set_checkpoint_mainnet () {
   python3 ./keeper.py \
     --net mainnet \
+    --node_url $MAINNET_RPC \
     -ca $PRAGMA_CONTRACT_ADDRESS \
     -wa $MAINNET_WALLET_ADDRESS \
     --pub_key $MAINNET_PRIVATE_KEY \
@@ -14,6 +15,7 @@ set_checkpoint_mainnet () {
 
 set_checkpoints_testnet () {
   python3 ./keeper.py \
+    --node_url $TESTNET_RPC \
     --net testnet \
     -wa $TESTNET_WALLET_ADDRESS \
     --pub_key $TESTNET_PRIVATE_KEY \
