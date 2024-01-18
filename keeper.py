@@ -8,13 +8,14 @@ import logging
 from typing import List
 from dataclasses import dataclass
 import traceback
+import time
 
 from starknet_py.contract import Contract
 from starknet_py.net.signer.stark_curve_signer import KeyPair
 from starknet_py.net.account.account import Account
 from starknet_py.net.full_node_client import FullNodeClient
 from starknet_py.net.models.chains import StarknetChainId
-from starknet_py.net.client_models import TransactionStatus
+from starknet_py.net.client_models import TransactionExecutionStatus
 
 
 MAX_FEE = int(1e16)
@@ -159,9 +160,11 @@ async def main():
                     err, value=err, tb=err.__traceback__)))
                 continue
 
+        time.sleep(10)
+
         tx_status = await account.client.get_transaction_receipt(response.transaction_hash)
 
-        if (tx_status.status == TransactionStatus.ACCEPTED_ON_L1) or (tx_status.status == TransactionStatus.ACCEPTED_ON_L2):
+        if tx_status.execution_status == TransactionExecutionStatus.SUCCEEDED:
             logging.info(f"Tx SUCCESSFULL, receipt: {tx_status}")
         else:
             tracebacks.append(tx_status)
@@ -182,15 +185,3 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
-
-# Example usage
-#   PRIVATE_KEY=... \
-#   PUBLIC_KEY=... \
-#   TG_CHAT_ID=...\
-#   TG_KEY=...\
-#   python ./keeper.py \
-#       --net testnet \
-#       -wa $ACCOUNT_ADDR \
-#       --contract_address $DUMMY_ADDR \
-#       --function_name write_value \
-#       --function_arguments "[1, 2]"

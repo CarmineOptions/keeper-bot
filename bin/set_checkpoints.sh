@@ -1,30 +1,28 @@
 #!/bin/sh
 
-set_checkpoint_mainnet () {
+set_checkpoints_mainnet () {
   python3 ./keeper.py \
-    --net mainnet \
     --node_url $MAINNET_RPC \
-    -ca $PRAGMA_CONTRACT_ADDRESS \
+    --net mainnet \
     -wa $MAINNET_WALLET_ADDRESS \
     --pub_key $MAINNET_PRIVATE_KEY \
     --priv_key $MAINNET_PRIVATE_KEY \
-    --function_name set_checkpoint \
-    --function_arguments "$1"\
-    --proxy
-}
-
-set_checkpoints_testnet () {
-  python3 ./keeper.py \
-    --node_url $TESTNET_RPC \
-    --net testnet \
-    -wa $TESTNET_WALLET_ADDRESS \
-    --pub_key $TESTNET_PRIVATE_KEY \
-    --priv_key $TESTNET_PRIVATE_KEY \
-    -ca $AMM_TESTNET_ADDRESS \
+    -ca $AMM_MAINNET_ADDRESS \
     --function_name set_pragma_required_checkpoints
 }
 
 
-set_checkpoint_mainnet "[19514442401534788, 0]"
-set_checkpoint_mainnet "[6148332971638477636, 0]"
-set_checkpoints_testnet
+# set_checkpoints_testnet () {
+#   python3 ./keeper.py \
+#     --node_url $TESTNET_RPC \
+#     --net testnet \
+#     -wa $TESTNET_WALLET_ADDRESS \
+#     --pub_key $TESTNET_PRIVATE_KEY \
+#     --priv_key $TESTNET_PRIVATE_KEY \
+#     -ca $AMM_MAINNET_ADDRESS \
+#     --function_name set_pragma_required_checkpoints
+# }
+
+
+set_checkpoints_mainnet 
+# set_checkpoints_testnet

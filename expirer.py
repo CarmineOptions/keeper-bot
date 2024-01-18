@@ -17,7 +17,7 @@ from starknet_py.net.models.chains import StarknetChainId
 
 MAX_FEE = int(1e16)
 OPTIONS_ENDPOINT = 'https://api.carmine.finance/api/v1/mainnet/option-volatility'
-AMM_ADDR = 0x076dbabc4293db346b0a56b29b6ea9fe18e93742c73f12348c8747ecfc1050aa  # mainnet
+AMM_ADDR = 0x047472e6755afc57ada9550b6a3ac93129cc4b5f98f51c73e0644d129fd208d9  # mainnet
 
 
 @dataclass
