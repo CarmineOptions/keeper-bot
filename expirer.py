@@ -1,51 +1,37 @@
 from typing import List, Any
+import argparse
+import logging
 import time
 import asyncio
 import requests
 import os
-import json
 from dataclasses import dataclass
 import traceback
 
 from starknet_py.contract import Contract
 from starknet_py.net.signer.stark_curve_signer import KeyPair
-from starknet_py.net.client_models import TransactionStatus
 from starknet_py.net.account.account import Account
 from starknet_py.net.full_node_client import FullNodeClient
 from starknet_py.net.models.chains import StarknetChainId
+from starknet_py.net.client_models import TransactionExecutionStatus
 
+from starknet_py.transaction_errors import (
+    TransactionRejectedError,
+    TransactionRevertedError,
+)
 
 MAX_FEE = int(1e16)
-OPTIONS_ENDPOINT = 'https://api.carmine.finance/api/v1/mainnet/option-volatility'
-AMM_ADDR = 0x047472e6755afc57ada9550b6a3ac93129cc4b5f98f51c73e0644d129fd208d9  # mainnet
-
+SUPPORTED_NETWORKS = ['testnet', 'mainnet']
 
 @dataclass
 class EnVars:
-    private_key: int
-    public_key: int
-    address: str
     tg_key: str
     tg_chat_id: str
-    rpc_url: int
 
 
 def parse_envs() -> EnVars:
-    PRIVATE_KEY = os.getenv('MAINNET_PRIVATE_KEY')
-    PUBLIC_KEY = os.getenv('MAINNET_PUBLIC_KEY')
-    ADDRESS = os.getenv('MAINNET_WALLET_ADDRESS')
-    RPC_URL = os.getenv('MAINNET_RPC')
     TG_KEY = os.getenv("TG_KEY")
     TG_CHAT_ID = os.getenv("TG_CHAT_ID")
-
-    if PRIVATE_KEY == None:
-        raise ValueError("Missing PRIVATE_KEY ENV")
-
-    if PUBLIC_KEY == None:
-        raise ValueError("Missing PUBLIC_KEY ENV")
-
-    if ADDRESS == None:
-        raise ValueError("Missing ADDRESS ENV")
 
     if TG_KEY == None:
         raise ValueError("Missing TG_KEY ENV")
@@ -53,16 +39,9 @@ def parse_envs() -> EnVars:
     if TG_CHAT_ID == None:
         raise ValueError("Missing TG_CHAT_ID ENV")
 
-    if RPC_URL == None:
-        raise ValueError("Missing RPC_URL ENV")
-
     return EnVars(
-        private_key=int(PRIVATE_KEY, 16),
-        public_key=int(PUBLIC_KEY, 16),
-        address=ADDRESS,
         tg_key=TG_KEY,
-        tg_chat_id=TG_CHAT_ID,
-        rpc_url=RPC_URL
+        tg_chat_id=TG_CHAT_ID
     )
 
 
@@ -76,105 +55,184 @@ def alert(msg: str, chat_id: str, api_key: str):
                        api_key + "/sendMessage", params=params)
     res.raise_for_status()
 
+def setup_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog='Carmine Expirer Bot',
+        description='Expires Options on Carmine Options AMM',
+    )
+
+    parser.add_argument(
+        '--net', type=str
+    )
+    parser.add_argument(
+        '--node_url', type=str
+    )
+
+    parser.add_argument(
+        '--wallet_address', '-wa', type=str
+    )
+    parser.add_argument(
+        '--pub_key', type=str
+    )
+    parser.add_argument(
+        '--priv_key', type=str
+    )
+    
+    parser.add_argument(
+        '--amm_address', type=str
+    )
+
+    return parser
+
+def get_chain(args: argparse.Namespace) -> StarknetChainId:
+    if args.net not in SUPPORTED_NETWORKS:
+        raise ValueError(
+            f'Unknown network, expected one of {SUPPORTED_NETWORKS}, got: {args.net}'
+        )
+
+    return StarknetChainId.MAINNET if 'mainnet' in args.node_url else StarknetChainId.TESTNET
+
 
 async def main():
+    
+    # Logging setup
+    logging.basicConfig(
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%d-%b-%y %H:%M:%S',
+        level=logging.INFO
+    )
 
-    try:
+    # Get TG related ENVs
+    enVars = parse_envs()
+    
+    # Parser
+    parser = setup_parser()
+    args = parser.parse_args()
 
-        enVars = parse_envs()
+    # Select chain
+    chain = get_chain(args)
+    
+    # Log Network, chain
+    logging.info(f"Selected network: {args.net}")
+    logging.info(f"Selected chain: {chain}")
 
-        CLIENT = FullNodeClient(node_url=enVars.rpc_url)
-        CHAIN = StarknetChainId.MAINNET
+    # Setup client and account for interacting with chain
+    client = FullNodeClient(node_url=args.node_url)
+    account = Account(
+        client=client,
+        address=args.wallet_address,
+        key_pair=KeyPair(
+            private_key=int(args.priv_key, 16),
+            public_key=int(args.pub_key, 16)
+        ),
+        chain=chain,
+    )
 
-        # Fetch all options from API and create list of them with latest pool position in given option
-        # pool position is stored under key volatilities
-        options = requests.get(OPTIONS_ENDPOINT)
-        options_with_position = []
-        for option in options.json()['data']:
-            options_with_position.append({
-                'option_side': option['option_side'],
-                'maturity': option['maturity'],
-                'strike_price': option['strike_price'],
-                'lp_address': option['lp_address'],
-                **sorted(option['volatilities'], key=lambda x: x['block_number'])[-1]
-            })
+    # Create AMM contract instance from address
+    contract = await Contract.from_address(
+        address=args.amm_address,
+        provider=account
+    )
 
-        # Get only options that are past their maturity
-        now = int(time.time())
-        options_past_maturity = [
-            option for option in options_with_position if option['maturity'] < now
-        ]
-
-        # Get only options that are past their maturity and with pool position > 0
-        options_past_maturity_non_zero_position = [
-            option for option in options_past_maturity if int(option['option_position'] or '0x0', 16) > 0
-        ]
-
-        # Create account instance
-        account = Account(
-            client=CLIENT,
-            address=enVars.address,
-            key_pair=KeyPair(private_key=enVars.private_key,
-                             public_key=enVars.public_key),
-            chain=CHAIN
-        )
-
-        # Load abi
-        with open("abi/amm_abi.json") as f:
-            abi = json.load(f)
-
-        # Create AMM contract instance
-        contract = Contract(
-            address=AMM_ADDR,
-            abi=abi,
-            provider=account,
-        )
-
-        # Prepare calls
-        calls = [
-            contract.functions['expire_option_token_for_pool'].prepare(
-                lptoken_address=int(option['lp_address'], 16),
-                option_side=option['option_side'],
-                strike_price=int(option['strike_price'], 16),
-                maturity=option['maturity']
-            )
-            for option in options_past_maturity_non_zero_position
-        ]
-
-        tracebacks = []
-        # Execute calls - try 3 times
-        for i in range(3):
-            response = await account.execute(calls=calls, max_fee=MAX_FEE)
-            try:
-                await account.client.wait_for_tx(response.transaction_hash)
-                tx_status = await account.client.get_transaction_receipt(response.transaction_hash)
-
-                if (tx_status.status == TransactionStatus.ACCEPTED_ON_L1) or (tx_status.status == TransactionStatus.ACCEPTED_ON_L2):
-                    alert(f"Expiration successfull: {tx_status}: ".upper(
-                    ), enVars.tg_chat_id, enVars.tg_key)
-                    for call in calls:
-                        alert(f"{call}", enVars.tg_chat_id, enVars.tg_key)
-                    break
-                else:
-                    tracebacks.append(tx_status)
-                    continue
-
-            except Exception as err:
-                tracebacks.append("".join(traceback.format_exception(
-                    err, value=err, tb=err.__traceback__)))
-                continue
-
-        if tracebacks:
-            alert(f'Expiration received {len(tracebacks)} errors:(('.upper(
-            ), enVars.tg_chat_id, enVars.tg_key)
-            for errmsg in tracebacks:
-                alert(errmsg, enVars.tg_chat_id, enVars.tg_key)
-
+    # Get all lptokens and log them
+    try: 
+        lptokens = (await contract.functions['get_all_lptoken_addresses'].call())[0]
+        logging.info(f"Fetched LPTokens: {lptokens}")
     except Exception as err:
-        err_msg = "".join(traceback.format_exception(
-            err, value=err, tb=err.__traceback__))
-        alert(f"EXPIRATION COMPLETE FAIL: {err_msg}",
-              enVars.tg_chat_id, enVars.tg_key)
+        # Log the error if there is some
+        err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
+        logging.error(f"Failed when fetching LPTokens: {err_msg}")
+        
+        # Send alert to Telegram
+        alert(f"Expirer failed when fetching lptokens", enVars.tg_chat_id, enVars.tg_key)
+        exit(420)
+    
+    for lptoken in lptokens:
+
+        logging.info(f"Expirying options for lptoken: {lptoken}")
+
+        # Fetch all the options for given lptoken
+        try:
+            opts = (await contract.functions['get_all_options'].call(lptoken))[0]
+        except Exception as err:
+            # Log the error if there is some
+            err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
+            logging.error(f"Failed fetching options for lptoken: {lptoken}, errmsg: {err_msg}")
+
+            # Send alert to Telegram
+            alert(f"Expirer failed when fetching options for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
+            continue
+
+        relevant_opts = [
+            i for i in opts 
+            if i['maturity'] < time.time()  # Get expired options
+            and i['maturity'] > (time.time() - 7*86400) # Limit to expired in last 7 days
+        ]
+
+        if len(relevant_opts) == 0:
+            
+            logging.info(f"No relevant options found for lptoken: {lptoken}")
+
+            # Send alert to Telegram
+            alert(f"Expirer found no relevant options for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
+            
+            continue
+            
+        
+        try:
+            calls = [
+                contract.functions['expire_option_token_for_pool'].prepare(
+                    lptoken_address = lptokens[0],
+                    option_side = option['option_side'],
+                    strike_price = option['strike_price'],
+                    maturity = option['maturity']
+                )
+                for option in relevant_opts
+            ]
+            response = await account.execute(calls=calls, max_fee=MAX_FEE)
+            logging.info(f"Executed calls for lptoken: {lptoken}")
+        except Exception as err: 
+            err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
+            logging.error(f"Failed preparing and executing calls for lptoken {lptoken}, errmsg: {err_msg}")
+
+            alert(f"Expirer failed to prepare and execute for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
+            continue
+
+        
+        try: 
+            await account.client.wait_for_tx(response.transaction_hash)
+
+        except TransactionRevertedError as err:
+            err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
+            logging.error(f"Expiry tx reverted for lptoken: {lptoken}, errmsg: {err_msg}")
+
+            alert(f"Expiry tx reverted for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
+            continue
+        
+        except TransactionRejectedError as err:
+            err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
+            logging.error(f"Expiry tx rejected for lptoken: {lptoken}, errmsg: {err_msg}")
+
+            alert(f"Expiry tx rejected for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
+            continue
+        
+        except Exception as err:
+            err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
+            logging.error(f"Unable to wait for tx of lptoken: {lptoken}, errmsg: {err_msg}")
+            # In this case the tx could still be alright, so proceed
+
+
+        tx_status = await account.client.get_transaction_receipt(response.transaction_hash)
+
+        if tx_status.execution_status == TransactionExecutionStatus.SUCCEEDED:
+            logging.info(f"Successfully expired options for lptoken: {lptoken}")
+            alert(f"Successfully expired options for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
+
+        else: 
+            logging.error(f"Failed to expire options for lptoken: {lptoken}, status: {tx_status}")
+            alert(f"Failed to expire options for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
+
+    time.sleep(10)
 
 if __name__ == '__main__':
     asyncio.run(main())
