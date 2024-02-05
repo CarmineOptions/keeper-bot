@@ -7,6 +7,7 @@ import requests
 import os
 from dataclasses import dataclass
 import traceback
+import pprint
 
 from starknet_py.contract import Contract
 from starknet_py.net.signer.stark_curve_signer import KeyPair
@@ -177,12 +178,13 @@ async def main():
             alert(f"Expirer found no relevant options for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
             
             continue
-            
         
+        logging.info(f'Relevant options for lpt: {lptoken}: {relevant_opts}')
+             
         try:
             calls = [
                 contract.functions['expire_option_token_for_pool'].prepare(
-                    lptoken_address = lptokens[0],
+                    lptoken_address = lptoken,
                     option_side = option['option_side'],
                     strike_price = option['strike_price'],
                     maturity = option['maturity']
@@ -190,7 +192,7 @@ async def main():
                 for option in relevant_opts
             ]
             response = await account.execute(calls=calls, max_fee=MAX_FEE)
-            logging.info(f"Executed calls for lptoken: {lptoken}")
+            logging.info(f"Executed calls for lptoken: {lptoken}, received response: {response}")
         except Exception as err: 
             err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
             logging.error(f"Failed preparing and executing calls for lptoken {lptoken}, errmsg: {err_msg}")
@@ -204,9 +206,9 @@ async def main():
 
         except TransactionRevertedError as err:
             err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
-            logging.error(f"Expiry tx reverted for lptoken: {lptoken}, errmsg: {err_msg}")
+            logging.error(f"Expiry tx reverted for lptoken: {lptoken}, errmsg:\n{err_msg}")
 
-            alert(f"Expiry tx reverted for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
+            alert(f"Expiry tx reverted for lptoken: {lptoken} \n\n {err_msg}", enVars.tg_chat_id, enVars.tg_key)
             continue
         
         except TransactionRejectedError as err:
@@ -221,16 +223,19 @@ async def main():
             logging.error(f"Unable to wait for tx of lptoken: {lptoken}, errmsg: {err_msg}")
             # In this case the tx could still be alright, so proceed
 
+        try: 
+            tx_status = await account.client.get_transaction_receipt(response.transaction_hash)
 
-        tx_status = await account.client.get_transaction_receipt(response.transaction_hash)
+            if tx_status.execution_status == TransactionExecutionStatus.SUCCEEDED:
+                logging.info(f"Successfully expired options for lptoken: {lptoken}")
+                alert(f"Successfully expired options for lptoken: {hex(lptoken)}", enVars.tg_chat_id, enVars.tg_key)
 
-        if tx_status.execution_status == TransactionExecutionStatus.SUCCEEDED:
-            logging.info(f"Successfully expired options for lptoken: {lptoken}")
-            alert(f"Successfully expired options for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
-
-        else: 
-            logging.error(f"Failed to expire options for lptoken: {lptoken}, status: {tx_status}")
-            alert(f"Failed to expire options for lptoken: {lptoken}", enVars.tg_chat_id, enVars.tg_key)
+            else: 
+                logging.error(f"Failed to expire options for lptoken: {lptoken}, status: {tx_status}")
+                alert(f"Failed to expire options for lptoken: {hex(lptoken)}", enVars.tg_chat_id, enVars.tg_key)
+        except: 
+            logging.error(f'Unable to ascertain outcome of tx: {response.transaction_hash} for lptoken {lptoken}')
+            alert(f"Unable to ascertain outcome of tx {hex(response.transaction_hash)} for lptoken {hex(lptoken)}", enVars.tg_chat_id, enVars.tg_key)
 
     time.sleep(10)
 
