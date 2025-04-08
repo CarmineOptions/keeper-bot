@@ -91,7 +91,7 @@ def get_chain(args: argparse.Namespace) -> StarknetChainId:
             f'Unknown network, expected one of {SUPPORTED_NETWORKS}, got: {args.net}'
         )
 
-    return StarknetChainId.MAINNET if 'mainnet' in args.node_url else StarknetChainId.TESTNET
+    return StarknetChainId.MAINNET if args.net == 'mainnet' else StarknetChainId.SEPOLIA
 
 
 async def main():
@@ -183,7 +183,7 @@ async def main():
              
         try:
             calls = [
-                contract.functions['expire_option_token_for_pool'].prepare(
+                contract.functions['expire_option_token_for_pool'].prepare_call(
                     lptoken_address = lptoken,
                     option_side = option['option_side'],
                     strike_price = option['strike_price'],
@@ -191,7 +191,7 @@ async def main():
                 )
                 for option in relevant_opts
             ]
-            response = await account.execute(calls=calls, max_fee=MAX_FEE)
+            response = await account.execute_v3(calls=calls, auto_estimate=True)
             logging.info(f"Executed calls for lptoken: {lptoken}, received response: {response}")
         except Exception as err: 
             err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))

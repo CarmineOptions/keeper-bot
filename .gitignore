@@ -1,2 +1,4 @@
 .env
 help*.ipynb 
+sth*.ipynb 
+.venv/

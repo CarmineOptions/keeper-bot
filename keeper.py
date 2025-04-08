@@ -102,7 +102,7 @@ def get_chain(args: argparse.Namespace) -> StarknetChainId:
             f'Unknown network, expected one of {SUPPORTED_NETWORKS}, got: {args.net}'
         )
 
-    return StarknetChainId.MAINNET if 'mainnet' in args.node_url else StarknetChainId.TESTNET
+    return StarknetChainId.MAINNET if args.net == 'mainnet' else StarknetChainId.SEPOLIA
 
 
 async def main():
@@ -127,8 +127,8 @@ async def main():
             client=client,
             address=args.wallet_address,
             key_pair=KeyPair(
-                private_key=int(args.priv_key, 16),
-                public_key=int(args.pub_key, 16)
+                private_key=args.priv_key,
+                public_key=args.pub_key
             ),
             chain=chain,
         )
@@ -140,7 +140,7 @@ async def main():
         )
 
         # Invoke function
-        call = contract.functions[args.function_name].prepare(
+        call = contract.functions[args.function_name].prepare_call(
             *args.function_arguments,
         )
 
@@ -149,7 +149,7 @@ async def main():
         tracebacks = []
 
         for _ in range(3):
-            response = await account.execute(calls=call, max_fee=MAX_FEE)
+            response = await account.execute_v3(calls=call, auto_estimate=True)
             logging.info(f"Sent transaction: {response}")
             try:
                 await account.client.wait_for_tx(response.transaction_hash)
