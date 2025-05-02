@@ -24,11 +24,14 @@ from starknet_py.transaction_errors import (
 MAX_FEE = int(1e16)
 SUPPORTED_NETWORKS = ['testnet', 'mainnet']
 
+def chunk_list(lst, n):
+    """Splits a list into chunks of size n."""
+    return [lst[i:i + n] for i in range(0, len(lst), n)]
+
 @dataclass
 class EnVars:
     tg_key: str
     tg_chat_id: str
-
 
 def parse_envs() -> EnVars:
     TG_KEY = os.getenv("TG_KEY")
@@ -179,8 +182,6 @@ async def main():
             
             continue
         
-        logging.info(f'Relevant options for lpt: {lptoken}: {relevant_opts}')
-             
         try:
             calls = [
                 contract.functions['expire_option_token_for_pool'].prepare_call(
@@ -191,8 +192,22 @@ async def main():
                 )
                 for option in relevant_opts
             ]
+
             response = await account.execute_v3(calls=calls, auto_estimate=True)
             logging.info(f"Executed calls for lptoken: {lptoken}, received response: {response}")
+            
+            # calls_chunks = chunk_list(calls, 5)
+            # for _calls in calls_chunks:
+            #     try:
+            #         response = await account.execute_v3(calls=_calls, auto_estimate=True)
+            #         logging.info(f"Executed calls for lptoken: {lptoken}, received response: {response}")
+            #     except Exception as err:
+            #         err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
+            #         logging.error(f"Failed preparing and executing calls for lptoken {lptoken}, errmsg: {err_msg}")
+
+            #     time.sleep(5)
+
+
         except Exception as err: 
             err_msg = "".join(traceback.format_exception( err, value=err, tb=err.__traceback__))
             logging.error(f"Failed preparing and executing calls for lptoken {lptoken}, errmsg: {err_msg}")

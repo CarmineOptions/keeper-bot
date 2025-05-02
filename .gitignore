@@ -1,4 +1,5 @@
 .env
+.env.copy
 help*.ipynb 
 sth*.ipynb 
 .venv/
